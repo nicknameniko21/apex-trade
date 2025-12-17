@@ -1,0 +1,5 @@
+{
+  "title": "🤖 Copilot Agent Test: Code Review and Improvement Request",
+  "body": "## Copilot Agent Testing\n\nI need help with autonomous code improvements. Please:\n\n1. **Review**: Analyze the code in `copilot_test_project/test_script.py`\n2. **Identify Issues**: Find bugs, security vulnerabilities, performance problems\n3. **Suggest Improvements**: Provide specific code fixes and optimizations\n4. **Generate Tests**: Create comprehensive unit tests\n5. **Apply Changes**: Make the improvements automatically\n\n**Expected Response**: Copilot agent should:\n- Analyze the code autonomously\n- Provide detailed improvement suggestions\n- Potentially create a pull request with fixes\n- Generate unit tests and documentation\n\nThis is a test of autonomous AI-to-AI communication within GitHub.",
+  "labels": ["copilot", "autonomous", "code-review", "enhancement"]
+}
