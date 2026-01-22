@@ -187,6 +187,40 @@ class SwarmIntelligenceAgent:
         logger.info(f"Swarm Status: {completed_tasks}/{total_tasks} tasks completed")
         return status
 
+    def get_agent_model_info(self, agent_id: str = None) -> Dict[str, Any]:
+        """Get model and version information for agents"""
+        if agent_id and agent_id in self.agents:
+            agent = self.agents[agent_id]
+            return {
+                "agent_id": agent.agent_id,
+                "name": agent.name,
+                "model": "Swarm Intelligence Agent v2.0",
+                "role": agent.role.value,
+                "capabilities": agent.capabilities,
+                "framework": "Python Multi-Agent System",
+                "version": "2.0.0",
+                "architecture": "Autonomous Task Execution",
+                "status": agent.status
+            }
+        else:
+            # Return all agents' model info
+            return {
+                "system_model": "Swarm Intelligence Engine v2.0",
+                "framework": "Multi-Agent Coordination System",
+                "version": "2.0.0",
+                "total_agents": len(self.agents),
+                "agents": [
+                    {
+                        "agent_id": a.agent_id,
+                        "name": a.name,
+                        "model": "Swarm Intelligence Agent v2.0",
+                        "role": a.role.value,
+                        "version": "2.0.0"
+                    }
+                    for a in self.agents.values()
+                ]
+            }
+
     def _log_action(self, action: str, data: Dict[str, Any]):
         """Log swarm action"""
         log_entry = {
