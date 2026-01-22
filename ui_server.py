@@ -261,6 +261,97 @@ def get_logs():
         return jsonify({"error": str(e)}), 500
 
 
+def route_natural_language(query: str) -> tuple[str, str]:
+    """Route natural language query to appropriate agent"""
+    query_lower = query.lower()
+    
+    # Analyze keywords
+    if any(word in query_lower for word in ['analyze', 'review', 'audit', 'check', 'scan', 'code']):
+        return "analyzer_01", "Analyzer Agent"
+    elif any(word in query_lower for word in ['optimize', 'improve', 'performance', 'speed', 'slow']):
+        return "optimizer_01", "Optimizer Agent"
+    elif any(word in query_lower for word in ['execute', 'run', 'test', 'deploy', 'build']):
+        return "executor_01", "Executor Agent"
+    elif any(word in query_lower for word in ['health', 'status', 'monitor', 'check system', 'uptime', 'metric']):
+        return "monitor_01", "Monitor Agent"
+    else:
+        return "analyzer_01", "Analyzer Agent"  # Default
+
+
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    """Natural language chat interface for agents"""
+    data = request.json
+    user_message = data.get("message", "").strip()
+    
+    if not user_message:
+        return jsonify({"success": False, "error": "Empty message"}), 400
+    
+    try:
+        # Route to appropriate agent
+        agent_id, agent_name = route_natural_language(user_message)
+        
+        # Create task from natural language
+        task_id = f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        task = swarm.create_task(task_id, user_message, priority=1)
+        
+        # Assign to routed agent
+        swarm.assign_task(task_id, agent_id)
+        
+        # Execute immediately
+        result = swarm.execute_task(task_id)
+        
+        # Format response
+        response = {
+            "success": True,
+            "agent": agent_name,
+            "user_message": user_message,
+            "task_id": task_id,
+            "status": "completed",
+            "result": {
+                "task_id": result.get("task_id"),
+                "description": result.get("description"),
+                "executed_at": result.get("executed_at"),
+                "agent": result.get("agent_name")
+            }
+        }
+        
+        return jsonify(response), 200
+    
+    except Exception as e:
+        logger.error(f"Error in chat: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/chat/history', methods=['GET'])
+def chat_history():
+    """Get chat history"""
+    try:
+        log_file = workspace / "action_logs" / "swarm_execution.log"
+        if not log_file.exists():
+            return jsonify({"history": []})
+        
+        history = []
+        with open(log_file, 'r') as f:
+            for line in f:
+                try:
+                    log_entry = json.loads(line)
+                    if log_entry.get("action") == "task_executed":
+                        history.append({
+                            "timestamp": log_entry.get("timestamp"),
+                            "task": log_entry.get("data", {}).get("description"),
+                            "agent": log_entry.get("data", {}).get("agent_name"),
+                            "success": log_entry.get("data", {}).get("success")
+                        })
+                except:
+                    pass
+        
+        return jsonify({"history": history[-50:]})
+    except Exception as e:
+        logger.error(f"Error getting chat history: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == '__main__':
     initialize_swarm()
     logger.info("Starting Swarm Intelligence UI on http://localhost:5000")
