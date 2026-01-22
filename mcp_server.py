@@ -86,6 +86,31 @@ class MCPServer:
                     "commit_message": "Commit message",
                     "push_remote": "Remote to push to (default: origin)"
                 }
+            },
+            {
+                "name": "swarm_coordinate",
+                "description": "Coordinate multi-agent swarm for complex tasks",
+                "parameters": {
+                    "task_description": "Description of task for swarm",
+                    "num_agents": "Number of agents to deploy (1-10)",
+                    "strategy": "Coordination strategy (sequential, parallel, adaptive)"
+                }
+            },
+            {
+                "name": "autonomous_execute",
+                "description": "Execute autonomous task with decision-making",
+                "parameters": {
+                    "task_type": "Type of task (code, data, optimization)",
+                    "target": "Target file or metric",
+                    "auto_learn": "Enable agent learning from execution (true/false)"
+                }
+            },
+            {
+                "name": "swarm_status",
+                "description": "Get current swarm intelligence status and metrics",
+                "parameters": {
+                    "detail_level": "Level of detail (summary, detailed, full)"
+                }
             }
         ]
     
