@@ -359,6 +359,14 @@
                 </form>
             </div>
         </div>
+
+        <div class="grid full">
+            <!-- Logs Panel -->
+            <div class="card">
+                <h2>🧾 Activity Logs</h2>
+                <div id="logs-list"></div>
+            </div>
+        </div>
     </div>
 
     <!-- Modals -->
@@ -462,6 +470,9 @@
 
         function updateLogs(logs) {
             const list = document.getElementById('logs-list');
+            if (!list) {
+                return;
+            }
             if (logs.length === 0) {
                 list.innerHTML = '<p style="color: #999;">No logs</p>';
                 return;
