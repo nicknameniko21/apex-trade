@@ -898,3 +898,8 @@
 # Claude Agent SDK debug files
 **/.claude/debug/
 **/.claude/debug/**
+
+# Test project specific output files
+copilot_test_project/data_processing.log
+copilot_test_project/results.json
+copilot_test_project/integration_test_results.json
