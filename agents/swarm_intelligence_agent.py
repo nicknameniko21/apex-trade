@@ -269,13 +269,13 @@ class SwarmIntelligenceAgent:
         """Route query to best-fit model based on strengths"""
         if not self.models:
             return {"success": False, "error": "No models registered"}
-
+        available_models = list(self.models.values())
         query_lower = query.lower()
         best_model = None
         best_score = -1
         matched_strengths = []
 
-        for model in self.models.values():
+        for model in available_models:
             strengths = [strength.lower() for strength in model.strengths]
             score = sum(1 for strength in strengths if strength in query_lower)
             if score > best_score:
@@ -284,7 +284,9 @@ class SwarmIntelligenceAgent:
                 matched_strengths = [s for s in strengths if s in query_lower]
 
         if best_model is None:
-            best_model = next(iter(self.models.values()))
+            if not available_models:
+                return {"success": False, "error": "No models registered"}
+            best_model = available_models[0]
 
         reason = (
             f"Matched strengths: {', '.join(matched_strengths)}"
@@ -366,9 +368,15 @@ class SwarmIntelligenceAgent:
             task = self.create_task(task_id, step.description, priority=step.priority)
 
             agent_id = step.assigned_to or self.select_agent_for_task(step.description)
-            if not agent_id or not self.assign_task(task.task_id, agent_id):
+            if not agent_id:
                 step.status = "failed"
                 step.result = {"success": False, "error": "No agent available"}
+                workflow.results.append(step.result)
+                continue
+
+            if not self.assign_task(task.task_id, agent_id):
+                step.status = "failed"
+                step.result = {"success": False, "error": "Task assignment failed"}
                 workflow.results.append(step.result)
                 continue
 

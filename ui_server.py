@@ -414,8 +414,17 @@ def chat():
     
     try:
         # Route to appropriate agent
-        agent_id = swarm.select_agent_for_task(user_message) or route_natural_language(user_message)[0]
-        agent_name = swarm.agents.get(agent_id).name if agent_id in swarm.agents else agent_id
+        selected_agent = swarm.select_agent_for_task(user_message)
+        if selected_agent:
+            fallback_name = None
+        else:
+            selected_agent, fallback_name = route_natural_language(user_message)
+        agent_id = selected_agent
+        agent_name = (
+            swarm.agents.get(agent_id).name
+            if agent_id and agent_id in swarm.agents
+            else (fallback_name or agent_id or "Unknown Agent")
+        )
         model_routing = swarm.route_model(user_message)
         
         # Create task from natural language

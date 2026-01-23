@@ -548,14 +548,33 @@
                 return;
             }
 
-            list.innerHTML = models.map(model => `
-                <div class="model-item">
-                    <h3>${model.name}</h3>
-                    <div class="pill">${model.provider}</div>
-                    <div class="muted" style="margin-top:6px;">Status: ${model.status}</div>
-                    <div class="muted">Strengths: ${(model.strengths || []).join(', ') || 'None'}</div>
-                </div>
-            `).join('');
+            list.innerHTML = '';
+            models.forEach(model => {
+                const item = document.createElement('div');
+                item.className = 'model-item';
+
+                const title = document.createElement('h3');
+                title.textContent = model.name;
+                item.appendChild(title);
+
+                const provider = document.createElement('div');
+                provider.className = 'pill';
+                provider.textContent = model.provider;
+                item.appendChild(provider);
+
+                const status = document.createElement('div');
+                status.className = 'muted';
+                status.style.marginTop = '6px';
+                status.textContent = `Status: ${model.status}`;
+                item.appendChild(status);
+
+                const strengths = document.createElement('div');
+                strengths.className = 'muted';
+                strengths.textContent = `Strengths: ${(model.strengths || []).join(', ') || 'None'}`;
+                item.appendChild(strengths);
+
+                list.appendChild(item);
+            });
         }
 
         function updateAgents(agents) {
@@ -621,24 +640,49 @@
                 return;
             }
 
-            list.innerHTML = workflows.map(workflow => `
-                <div class="task-item ${workflow.status === 'completed' ? 'completed' : ''}">
-                    <h4>${workflow.name}</h4>
-                    <span class="task-status ${workflow.status === 'completed' ? 'completed' : ''}">${workflow.status}</span>
-                    <p class="muted">${workflow.description || ''}</p>
-                    <p class="muted">Steps: ${workflow.steps.length}</p>
-                    <div>
-                        ${workflow.steps.map(step => `
-                            <div class="workflow-step ${step.status}">
-                                ${step.description}
-                            </div>
-                        `).join('')}
-                    </div>
-                    <div class="controls">
-                        <button onclick="executeWorkflow('${workflow.workflow_id}')">Execute Workflow</button>
-                    </div>
-                </div>
-            `).join('');
+            list.innerHTML = '';
+            workflows.forEach(workflow => {
+                const card = document.createElement('div');
+                card.className = `task-item ${workflow.status === 'completed' ? 'completed' : ''}`;
+
+                const title = document.createElement('h4');
+                title.textContent = workflow.name;
+                card.appendChild(title);
+
+                const status = document.createElement('span');
+                status.className = `task-status ${workflow.status === 'completed' ? 'completed' : ''}`;
+                status.textContent = workflow.status;
+                card.appendChild(status);
+
+                const description = document.createElement('p');
+                description.className = 'muted';
+                description.textContent = workflow.description || '';
+                card.appendChild(description);
+
+                const stepsCount = document.createElement('p');
+                stepsCount.className = 'muted';
+                stepsCount.textContent = `Steps: ${workflow.steps.length}`;
+                card.appendChild(stepsCount);
+
+                const stepList = document.createElement('div');
+                workflow.steps.forEach(step => {
+                    const stepItem = document.createElement('div');
+                    stepItem.className = `workflow-step ${step.status}`;
+                    stepItem.textContent = step.description;
+                    stepList.appendChild(stepItem);
+                });
+                card.appendChild(stepList);
+
+                const controls = document.createElement('div');
+                controls.className = 'controls';
+                const button = document.createElement('button');
+                button.textContent = 'Execute Workflow';
+                button.addEventListener('click', () => executeWorkflow(workflow.workflow_id));
+                controls.appendChild(button);
+                card.appendChild(controls);
+
+                list.appendChild(card);
+            });
         }
 
         function updateLogs(logs) {
@@ -664,8 +708,13 @@
                         if (task.status !== 'pending') return;
                         const select = document.getElementById(`agent-select-${task.id}`);
                         if (!select) return;
-                        select.innerHTML = '<option value="">Select Agent...</option>' +
-                            agents.map(agent => `<option value="${agent.id}">${agent.name}</option>`).join('');
+                        select.innerHTML = '<option value="">Select Agent...</option>';
+                        agents.forEach(agent => {
+                            const option = document.createElement('option');
+                            option.value = agent.id;
+                            option.textContent = agent.name;
+                            select.appendChild(option);
+                        });
                     });
                 });
         }
@@ -829,7 +878,7 @@
                 });
                 const data = await res.json();
                 if (data.success) {
-                    result.innerHTML = `Best model: <strong>${data.model.name}</strong> (${data.model.provider})<br/><span class="muted">${data.reason}</span>`;
+                    result.textContent = `Best model: ${data.model.name} (${data.model.provider}) · ${data.reason}`;
                 } else {
                     result.textContent = data.error || 'Routing failed.';
                 }
@@ -878,7 +927,7 @@
             // Add user message
             const userMsg = document.createElement('div');
             userMsg.style.cssText = 'margin-bottom: 10px; padding: 10px; background: #0f3460; border-left: 3px solid #00d4ff; border-radius: 4px; color: #e0e0e0;';
-            userMsg.innerHTML = `<strong>You:</strong> ${message}`;
+            userMsg.textContent = `You: ${message}`;
             chatBox.appendChild(userMsg);
             
             input.value = '';
@@ -896,12 +945,12 @@
                     const agentMsg = document.createElement('div');
                     agentMsg.style.cssText = 'margin-bottom: 10px; padding: 10px; background: #1a3a3a; border-left: 3px solid #00d400; border-radius: 4px; color: #00d400;';
                     const modelInfo = data.model ? ` · Model: ${data.model.name}` : '';
-                    agentMsg.innerHTML = `<strong>${data.agent}:</strong> ✓ Task completed (${data.task_id})${modelInfo}`;
+                    agentMsg.textContent = `Agent ${data.agent}: ✓ Task completed (${data.task_id})${modelInfo}`;
                     chatBox.appendChild(agentMsg);
                 } else {
                     const errorMsg = document.createElement('div');
                     errorMsg.style.cssText = 'margin-bottom: 10px; padding: 10px; background: #3a1a1a; border-left: 3px solid #ff6b6b; border-radius: 4px; color: #ff6b6b;';
-                    errorMsg.innerHTML = `<strong>Error:</strong> ${data.error}`;
+                    errorMsg.textContent = `Error: ${data.error}`;
                     chatBox.appendChild(errorMsg);
                 }
                 
@@ -910,7 +959,7 @@
             } catch (err) {
                 const errorMsg = document.createElement('div');
                 errorMsg.style.cssText = 'margin-bottom: 10px; padding: 10px; background: #3a1a1a; border-left: 3px solid #ff6b6b; border-radius: 4px; color: #ff6b6b;';
-                errorMsg.innerHTML = `<strong>Error:</strong> ${err.message}`;
+                errorMsg.textContent = `Error: ${err.message}`;
                 chatBox.appendChild(errorMsg);
             }
         }
