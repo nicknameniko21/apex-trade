@@ -59,6 +59,10 @@
             grid-template-columns: 1fr;
         }
 
+        .grid.thirds {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
         .card {
             background: #0f3460;
             border: 1px solid #00d4ff;
@@ -72,6 +76,12 @@
             margin-bottom: 15px;
             border-bottom: 1px solid #00d4ff;
             padding-bottom: 10px;
+        }
+
+        .card h2 small {
+            color: #7cc8ff;
+            font-size: 0.7em;
+            font-weight: normal;
         }
 
         .agent-item {
@@ -288,6 +298,62 @@
             font-size: 0.9em;
             margin-top: 20px;
         }
+
+        .pill {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.75em;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            background: #1a1a2e;
+            border: 1px solid #00d4ff;
+            color: #7cc8ff;
+        }
+
+        .model-item {
+            background: #1a1a2e;
+            border-left: 3px solid #7cc8ff;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+
+        .model-item h3 {
+            color: #7cc8ff;
+            margin-bottom: 6px;
+        }
+
+        .workflow-step {
+            background: #16213e;
+            border-left: 3px solid #00ff99;
+            padding: 10px;
+            margin: 6px 0;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .workflow-step.completed {
+            border-left-color: #00d400;
+        }
+
+        .workflow-step.failed {
+            border-left-color: #ff6b6b;
+        }
+
+        .muted {
+            color: #999;
+            font-size: 0.85em;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .form-row input {
+            flex: 1;
+        }
     </style>
 </head>
 <body>
@@ -336,11 +402,49 @@
             </div>
         </div>
 
+        <div class="grid thirds">
+            <!-- Models Panel -->
+            <div class="card">
+                <h2>🧠 Models <small>LLM routing</small></h2>
+                <div id="models-list"></div>
+                <button onclick="showRegisterModelModal()">+ Register Model</button>
+            </div>
+
+            <!-- Router Panel -->
+            <div class="card">
+                <h2>🧭 Route Query</h2>
+                <form id="route-model-form">
+                    <textarea id="route-query" placeholder="Describe your request to select the best model..." rows="4" required></textarea>
+                    <button type="submit">Find Best Model</button>
+                </form>
+                <div id="route-result" class="muted" style="margin-top: 10px;"></div>
+            </div>
+
+            <!-- Workflow Panel -->
+            <div class="card">
+                <h2>🧩 Workflow Builder</h2>
+                <form id="workflow-form">
+                    <input type="text" id="workflow-name" placeholder="Workflow name" required />
+                    <textarea id="workflow-description" placeholder="Workflow goal" rows="2"></textarea>
+                    <textarea id="workflow-steps" placeholder="Steps (one per line)" rows="4" required></textarea>
+                    <button type="submit">Create Workflow</button>
+                </form>
+            </div>
+        </div>
+
         <div class="grid full">
             <!-- Tasks Panel -->
             <div class="card">
                 <h2>📋 Tasks</h2>
                 <div id="tasks-list"></div>
+            </div>
+        </div>
+
+        <div class="grid full">
+            <!-- Workflows Panel -->
+            <div class="card">
+                <h2>🧭 Workflows</h2>
+                <div id="workflows-list"></div>
             </div>
         </div>
 
@@ -357,6 +461,14 @@
                     <input type="text" id="chat-input" placeholder="Ask your agents anything... e.g., 'analyze my code', 'check system health'" style="flex: 1;" required />
                     <button type="submit">Send</button>
                 </form>
+            </div>
+        </div>
+
+        <div class="grid full">
+            <!-- Activity Logs -->
+            <div class="card">
+                <h2>🧾 Activity Logs</h2>
+                <div id="logs-list"></div>
             </div>
         </div>
     </div>
@@ -383,26 +495,67 @@
         </div>
     </div>
 
+    <div class="modal" id="registerModelModal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeModelModal()">&times;</span>
+            <h2>Register Model</h2>
+            <form id="register-model-form">
+                <input type="text" id="model-id" placeholder="Model ID (e.g., gpt_4)" required />
+                <input type="text" id="model-name" placeholder="Model Name" required />
+                <input type="text" id="model-provider" placeholder="Provider" required />
+                <input type="text" id="model-strengths" placeholder="Strengths (comma-separated)" />
+                <input type="text" id="model-endpoint" placeholder="Endpoint (optional)" />
+                <select id="model-status">
+                    <option value="available" selected>Available</option>
+                    <option value="degraded">Degraded</option>
+                    <option value="offline">Offline</option>
+                </select>
+                <button type="submit">Register</button>
+            </form>
+        </div>
+    </div>
+
     <script>
         const API_URL = 'http://localhost:5000/api';
         let refreshInterval;
 
         async function fetchData() {
             try {
-                const [agents, tasks, status, logs] = await Promise.all([
+                const [agents, tasks, status, logs, models, workflows] = await Promise.all([
                     fetch(`${API_URL}/agents`).then(r => r.json()),
                     fetch(`${API_URL}/tasks`).then(r => r.json()),
                     fetch(`${API_URL}/status`).then(r => r.json()),
-                    fetch(`${API_URL}/logs`).then(r => r.json())
+                    fetch(`${API_URL}/logs`).then(r => r.json()),
+                    fetch(`${API_URL}/models`).then(r => r.json()),
+                    fetch(`${API_URL}/workflows`).then(r => r.json())
                 ]);
 
                 updateAgents(agents.agents);
                 updateTasks(tasks.tasks);
                 updateStatus(status);
                 updateLogs(logs.logs);
+                updateModels(models.models);
+                updateWorkflows(workflows.workflows);
             } catch (err) {
                 console.error('Error fetching data:', err);
             }
+        }
+
+        function updateModels(models) {
+            const list = document.getElementById('models-list');
+            if (!models || models.length === 0) {
+                list.innerHTML = '<p style="color: #999;">No models registered</p>';
+                return;
+            }
+
+            list.innerHTML = models.map(model => `
+                <div class="model-item">
+                    <h3>${model.name}</h3>
+                    <div class="pill">${model.provider}</div>
+                    <div class="muted" style="margin-top:6px;">Status: ${model.status}</div>
+                    <div class="muted">Strengths: ${(model.strengths || []).join(', ') || 'None'}</div>
+                </div>
+            `).join('');
         }
 
         function updateAgents(agents) {
@@ -451,6 +604,7 @@
             `).join('');
 
             document.getElementById('total-tasks').textContent = tasks.length;
+            populateAgentSelects(tasks);
         }
 
         function updateStatus(status) {
@@ -458,6 +612,33 @@
                 const rate = Math.round((status.completed_tasks / status.total_tasks) * 100);
                 document.getElementById('completion-rate').textContent = rate + '%';
             }
+        }
+
+        function updateWorkflows(workflows) {
+            const list = document.getElementById('workflows-list');
+            if (!workflows || workflows.length === 0) {
+                list.innerHTML = '<p style="color: #999;">No workflows</p>';
+                return;
+            }
+
+            list.innerHTML = workflows.map(workflow => `
+                <div class="task-item ${workflow.status === 'completed' ? 'completed' : ''}">
+                    <h4>${workflow.name}</h4>
+                    <span class="task-status ${workflow.status === 'completed' ? 'completed' : ''}">${workflow.status}</span>
+                    <p class="muted">${workflow.description || ''}</p>
+                    <p class="muted">Steps: ${workflow.steps.length}</p>
+                    <div>
+                        ${workflow.steps.map(step => `
+                            <div class="workflow-step ${step.status}">
+                                ${step.description}
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="controls">
+                        <button onclick="executeWorkflow('${workflow.workflow_id}')">Execute Workflow</button>
+                    </div>
+                </div>
+            `).join('');
         }
 
         function updateLogs(logs) {
@@ -472,6 +653,21 @@
                 const timestamp = new Date(log.timestamp).toLocaleTimeString();
                 return `<div class="log-entry action">[${timestamp}] ${action}</div>`;
             }).join('');
+        }
+
+        function populateAgentSelects(tasks) {
+            fetch(`${API_URL}/agents`)
+                .then(r => r.json())
+                .then(data => {
+                    const agents = data.agents || [];
+                    tasks.forEach(task => {
+                        if (task.status !== 'pending') return;
+                        const select = document.getElementById(`agent-select-${task.id}`);
+                        if (!select) return;
+                        select.innerHTML = '<option value="">Select Agent...</option>' +
+                            agents.map(agent => `<option value="${agent.id}">${agent.name}</option>`).join('');
+                    });
+                });
         }
 
         async function assignTask(taskId) {
@@ -511,12 +707,35 @@
             }
         }
 
+        async function executeWorkflow(workflowId) {
+            try {
+                const res = await fetch(`${API_URL}/workflows/${workflowId}/execute`, { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    alert('Workflow executed!');
+                } else {
+                    alert('Workflow error: ' + (data.error || 'Unknown'));
+                }
+                fetchData();
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
         function showRegisterAgentModal() {
             document.getElementById('registerAgentModal').classList.add('active');
         }
 
         function closeModal() {
             document.getElementById('registerAgentModal').classList.remove('active');
+        }
+
+        function showRegisterModelModal() {
+            document.getElementById('registerModelModal').classList.add('active');
+        }
+
+        function closeModelModal() {
+            document.getElementById('registerModelModal').classList.remove('active');
         }
 
         document.getElementById('create-task-form').addEventListener('submit', async (e) => {
@@ -566,6 +785,87 @@
             }
         });
 
+        document.getElementById('register-model-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const model_id = document.getElementById('model-id').value;
+            const name = document.getElementById('model-name').value;
+            const provider = document.getElementById('model-provider').value;
+            const strengths = document.getElementById('model-strengths').value
+                .split(',')
+                .map(c => c.trim())
+                .filter(Boolean);
+            const endpoint = document.getElementById('model-endpoint').value.trim();
+            const status = document.getElementById('model-status').value;
+
+            try {
+                const res = await fetch(`${API_URL}/models/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_id, name, provider, strengths, endpoint, status })
+                });
+                
+                if (res.ok) {
+                    alert('Model registered!');
+                    closeModelModal();
+                    document.getElementById('register-model-form').reset();
+                    fetchData();
+                }
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        });
+
+        document.getElementById('route-model-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const query = document.getElementById('route-query').value.trim();
+            if (!query) return;
+            const result = document.getElementById('route-result');
+            result.textContent = 'Routing...';
+            try {
+                const res = await fetch(`${API_URL}/models/route`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    result.innerHTML = `Best model: <strong>${data.model.name}</strong> (${data.model.provider})<br/><span class="muted">${data.reason}</span>`;
+                } else {
+                    result.textContent = data.error || 'Routing failed.';
+                }
+            } catch (err) {
+                result.textContent = err.message;
+            }
+        });
+
+        document.getElementById('workflow-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = document.getElementById('workflow-name').value.trim();
+            const description = document.getElementById('workflow-description').value.trim();
+            const stepsRaw = document.getElementById('workflow-steps').value
+                .split('\n')
+                .map(step => step.trim())
+                .filter(Boolean);
+            const steps = stepsRaw.map(step => ({ description: step, priority: 5 }));
+
+            if (steps.length === 0) return;
+
+            try {
+                const res = await fetch(`${API_URL}/workflows/create`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, description, steps })
+                });
+                if (res.ok) {
+                    alert('Workflow created!');
+                    document.getElementById('workflow-form').reset();
+                    fetchData();
+                }
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        });
+
         async function sendChatMessage(e) {
             e.preventDefault();
             const input = document.getElementById('chat-input');
@@ -595,7 +895,8 @@
                 if (data.success) {
                     const agentMsg = document.createElement('div');
                     agentMsg.style.cssText = 'margin-bottom: 10px; padding: 10px; background: #1a3a3a; border-left: 3px solid #00d400; border-radius: 4px; color: #00d400;';
-                    agentMsg.innerHTML = `<strong>${data.agent}:</strong> ✓ Task completed (${data.task_id})`;
+                    const modelInfo = data.model ? ` · Model: ${data.model.name}` : '';
+                    agentMsg.innerHTML = `<strong>${data.agent}:</strong> ✓ Task completed (${data.task_id})${modelInfo}`;
                     chatBox.appendChild(agentMsg);
                 } else {
                     const errorMsg = document.createElement('div');

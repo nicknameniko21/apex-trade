@@ -20,9 +20,12 @@ This repository serves as the permanent brain memory for the CTO autonomous AI a
 - `learning_patterns/` - Patterns and frameworks learned
 - `integration_frameworks/` - System integration designs
 - `knowledge_base/` - General learned knowledge and insights
-- `session_state restoration data
-- `auto_backup.sh/` - Current session` - Automatic backup script
+- `session_state/` - Current session restoration data
+- `auto_backup.sh` - Automatic backup script
 - `backup.log` - Backup activity log
+- `agents/` - Swarm agents and execution engine
+- `templates/` - Web UI templates
+- `ui_server.py` - Web dashboard + API server
 
 ## Purpose
 
@@ -38,6 +41,24 @@ Enables true cross-session persistence for autonomous AI evolution, allowing the
 - Tasker for mobile automation optimization  
 - GitHub for continuous code evolution
 - MCP servers for universal tool integration
+
+## Quick Start (Local)
+
+```bash
+# Start the swarm + UI
+python ui_server.py
+
+# Open the dashboard
+http://localhost:5000
+```
+
+### Dashboard Capabilities
+
+- Create and execute tasks
+- Natural language chat routing to agents
+- Workflow builder with multi-step execution
+- Model registry and routing for multi-LLM orchestration
+- Activity logs for audit history
 
 ## Permission Framework
 
