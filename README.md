@@ -32,6 +32,11 @@ Enables true cross-session persistence for autonomous AI evolution, allowing the
 - Build on previous discoveries and improvements
 - Achieve true autonomous operation
 
+## Rowboat Quick Start
+
+Use Rowboat's **Run** button with `rowboat.py` to start the system and UI.
+The app respects `PORT` (default: 5000). Set `HOST` as needed (default: `127.0.0.1`; with `PORT` set, defaults to `0.0.0.0` for Rowboat).
+
 ## Integration Targets
 
 - Rowboat IDE for multi-agent workflow evolution
