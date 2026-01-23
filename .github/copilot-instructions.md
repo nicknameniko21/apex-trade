@@ -12,7 +12,7 @@
 ## Python Test Project
 - The `copilot_test_project/` directory contains a Python demo with pytest-based tests.
 - Keep updates isolated to that directory when changing demo code or tests.
-- If tests are required, run `python -m pytest` from `copilot_test_project/`.
+- If tests are required, run `python -m pytest copilot_test_project/` from the repository root.
 
 ## Safety and Operations
 - Do not add secrets or credentials to the repository.
