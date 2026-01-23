@@ -283,7 +283,7 @@ def save_results(results: List[Dict[str, Any]], output_file: str = 'results.json
         
         logger.info(f"Successfully saved results to {output_file}")
         
-    except json.JSONDecodeError as e:
+    except (TypeError, ValueError) as e:
         logger.error(f"Cannot serialize results to JSON: {e}")
         raise ValueError(f"JSON serialization error: {e}")
     except PermissionError as e:
