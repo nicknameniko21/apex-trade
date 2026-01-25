@@ -7,6 +7,7 @@ from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 import json
 import logging
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List
@@ -41,6 +42,37 @@ def initialize_swarm():
         "data_analyst": DataAnalysisAgent(),
         "optimizer": OptimizationAgent()
     }
+    if not swarm.agents:
+        swarm.register_agent(
+            "coordinator_01",
+            "Coordinator",
+            AgentRole.COORDINATOR,
+            ["coordinate", "delegate", "workflow", "plan"]
+        )
+        swarm.register_agent(
+            "analyzer_01",
+            "Analyzer",
+            AgentRole.ANALYZER,
+            ["analyze", "review", "audit", "code"]
+        )
+        swarm.register_agent(
+            "executor_01",
+            "Executor",
+            AgentRole.EXECUTOR,
+            ["execute", "run", "deploy", "test"]
+        )
+        swarm.register_agent(
+            "monitor_01",
+            "Monitor",
+            AgentRole.MONITOR,
+            ["monitor", "health", "status", "metrics"]
+        )
+        swarm.register_agent(
+            "communicator_01",
+            "Communicator",
+            AgentRole.COMMUNICATOR,
+            ["communicate", "summarize", "report"]
+        )
     logger.info("Swarm and autonomous agents initialized")
 
 
@@ -189,6 +221,99 @@ def get_status():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/api/models', methods=['GET'])
+def get_models():
+    """Get all registered models"""
+    try:
+        return jsonify({"models": swarm.list_models(), "total": len(swarm.models)})
+    except Exception as e:
+        logger.error(f"Error getting models: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/models/register', methods=['POST'])
+def register_model():
+    """Register a new model"""
+    data = request.json or {}
+    try:
+        model_id = data.get("model_id")
+        name = data.get("name")
+        provider = data.get("provider")
+        strengths = data.get("strengths", [])
+        endpoint = data.get("endpoint")
+        status = data.get("status", "available")
+
+        if not model_id or not name or not provider:
+            return jsonify({"success": False, "error": "model_id, name, provider required"}), 400
+
+        model = swarm.register_model(
+            model_id=model_id,
+            name=name,
+            provider=provider,
+            strengths=strengths,
+            endpoint=endpoint,
+            status=status
+        )
+        return jsonify({"success": True, "model": asdict(model)}), 201
+    except Exception as e:
+        logger.error(f"Error registering model: {e}")
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@app.route('/api/models/route', methods=['POST'])
+def route_model():
+    """Route query to best-fit model"""
+    data = request.json or {}
+    query = data.get("query", "").strip()
+    if not query:
+        return jsonify({"success": False, "error": "Query required"}), 400
+    try:
+        return jsonify(swarm.route_model(query))
+    except Exception as e:
+        logger.error(f"Error routing model: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/workflows', methods=['GET'])
+def get_workflows():
+    """Get all workflows"""
+    try:
+        return jsonify({"workflows": swarm.list_workflows(), "total": len(swarm.workflows)})
+    except Exception as e:
+        logger.error(f"Error getting workflows: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/workflows/create', methods=['POST'])
+def create_workflow():
+    """Create a workflow"""
+    data = request.json or {}
+    try:
+        workflow_id = data.get("workflow_id", f"workflow_{len(swarm.workflows)}")
+        name = data.get("name", "Unnamed Workflow")
+        description = data.get("description", "")
+        steps = data.get("steps", [])
+        if not steps:
+            return jsonify({"success": False, "error": "Workflow steps required"}), 400
+
+        workflow = swarm.create_workflow(workflow_id, name, description, steps)
+        return jsonify({"success": True, "workflow": asdict(workflow)}), 201
+    except Exception as e:
+        logger.error(f"Error creating workflow: {e}")
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@app.route('/api/workflows/<workflow_id>/execute', methods=['POST'])
+def execute_workflow(workflow_id):
+    """Execute workflow"""
+    try:
+        result = swarm.execute_workflow(workflow_id)
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error executing workflow: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route('/api/autonomous/execute', methods=['POST'])
 def execute_autonomous():
     """Execute autonomous agent task"""
@@ -289,7 +414,18 @@ def chat():
     
     try:
         # Route to appropriate agent
-        agent_id, agent_name = route_natural_language(user_message)
+        selected_agent = swarm.select_agent_for_task(user_message)
+        if selected_agent:
+            fallback_name = None
+        else:
+            selected_agent, fallback_name = route_natural_language(user_message)
+        agent_id = selected_agent
+        agent_name = (
+            swarm.agents.get(agent_id).name
+            if agent_id and agent_id in swarm.agents
+            else (fallback_name or agent_id or "Unknown Agent")
+        )
+        model_routing = swarm.route_model(user_message)
         
         # Create task from natural language
         task_id = f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -305,9 +441,12 @@ def chat():
         response = {
             "success": True,
             "agent": agent_name,
+            "agent_id": agent_id,
             "user_message": user_message,
             "task_id": task_id,
             "status": "completed",
+            "model": model_routing.get("model"),
+            "model_reason": model_routing.get("reason"),
             "result": {
                 "task_id": result.get("task_id"),
                 "description": result.get("description"),

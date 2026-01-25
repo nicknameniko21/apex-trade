@@ -7,10 +7,11 @@ Core multi-agent coordination system for autonomous task execution
 import json
 import logging
 import asyncio
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Callable
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from enum import Enum
 
 logging.basicConfig(level=logging.INFO)
@@ -59,6 +60,50 @@ class Agent:
             self.created_at = datetime.now().isoformat()
 
 
+@dataclass
+class ModelProfile:
+    """LLM model profile for routing and coordination"""
+    model_id: str
+    name: str
+    provider: str
+    strengths: List[str]
+    status: str = "available"
+    endpoint: Optional[str] = None
+    created_at: str = None
+
+    def __post_init__(self):
+        if self.created_at is None:
+            self.created_at = datetime.now().isoformat()
+
+
+@dataclass
+class WorkflowStep:
+    """Workflow step definition"""
+    step_id: str
+    description: str
+    priority: int = 5
+    assigned_to: Optional[str] = None
+    status: str = "pending"
+    result: Optional[Dict[str, Any]] = None
+
+
+@dataclass
+class Workflow:
+    """Workflow definition for multi-step execution"""
+    workflow_id: str
+    name: str
+    description: str
+    steps: List[WorkflowStep] = field(default_factory=list)
+    status: str = "pending"
+    created_at: str = None
+    executed_at: Optional[str] = None
+    results: List[Dict[str, Any]] = field(default_factory=list)
+
+    def __post_init__(self):
+        if self.created_at is None:
+            self.created_at = datetime.now().isoformat()
+
+
 class SwarmIntelligenceAgent:
     """Central swarm coordination system"""
 
@@ -67,10 +112,13 @@ class SwarmIntelligenceAgent:
         self.agents: Dict[str, Agent] = {}
         self.tasks: Dict[str, Task] = {}
         self.task_queue: asyncio.Queue = asyncio.Queue()
+        self.workflows: Dict[str, Workflow] = {}
+        self.models: Dict[str, ModelProfile] = {}
         self.execution_log = self.workspace_dir / "action_logs" / "swarm_execution.log"
         self.execution_log.parent.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"Swarm Intelligence Agent initialized at {self.workspace_dir}")
+        self._register_default_models()
 
     def register_agent(self, agent_id: str, name: str, role: AgentRole,
                       capabilities: List[str]) -> Agent:
@@ -111,7 +159,10 @@ class SwarmIntelligenceAgent:
 
         # Check if agent has required capabilities
         task_keywords = set(task.description.lower().split())
-        agent_capabilities = set(agent.capabilities)
+        agent_capabilities = {cap.lower() for cap in agent.capabilities}
+        match_score = len(task_keywords & agent_capabilities)
+        if match_score == 0:
+            logger.warning(f"Agent {agent.name} may not match task keywords: {task.description}")
 
         task.assigned_to = agent_id
         task.status = "assigned"
@@ -164,6 +215,10 @@ class SwarmIntelligenceAgent:
         active_agents = sum(1 for a in self.agents.values() if a.status == "active")
         total_tasks = len(self.tasks)
         completed_tasks = sum(1 for t in self.tasks.values() if t.status == "completed")
+        total_workflows = len(self.workflows)
+        completed_workflows = sum(
+            1 for w in self.workflows.values() if w.status == "completed"
+        )
 
         status = {
             "timestamp": datetime.now().isoformat(),
@@ -172,6 +227,9 @@ class SwarmIntelligenceAgent:
             "total_tasks": total_tasks,
             "completed_tasks": completed_tasks,
             "completion_rate": completed_tasks / total_tasks if total_tasks > 0 else 0,
+            "total_workflows": total_workflows,
+            "completed_workflows": completed_workflows,
+            "models_available": len(self.models),
             "agents": [
                 {
                     "id": a.agent_id,
@@ -186,6 +244,207 @@ class SwarmIntelligenceAgent:
 
         logger.info(f"Swarm Status: {completed_tasks}/{total_tasks} tasks completed")
         return status
+
+    def register_model(self, model_id: str, name: str, provider: str,
+                       strengths: List[str], endpoint: Optional[str] = None,
+                       status: str = "available") -> ModelProfile:
+        """Register a new model for routing"""
+        model = ModelProfile(
+            model_id=model_id,
+            name=name,
+            provider=provider,
+            strengths=strengths,
+            endpoint=endpoint,
+            status=status
+        )
+        self.models[model_id] = model
+        self._log_action("model_registered", {"model": asdict(model)})
+        return model
+
+    def list_models(self) -> List[Dict[str, Any]]:
+        """List registered models"""
+        return [asdict(model) for model in self.models.values()]
+
+    def route_model(self, query: str) -> Dict[str, Any]:
+        """Route query to best-fit model based on strengths"""
+        if not self.models:
+            return {"success": False, "error": "No models registered"}
+        available_models = list(self.models.values())
+        query_lower = query.lower()
+        best_model = None
+        best_score = -1
+        matched_strengths = []
+
+        for model in available_models:
+            strengths = [strength.lower() for strength in model.strengths]
+            score = sum(1 for strength in strengths if strength in query_lower)
+            if score > best_score:
+                best_score = score
+                best_model = model
+                matched_strengths = [s for s in strengths if s in query_lower]
+
+        if best_model is None:
+            if not available_models:
+                return {"success": False, "error": "No models registered"}
+            best_model = available_models[0]
+
+        reason = (
+            f"Matched strengths: {', '.join(matched_strengths)}"
+            if matched_strengths
+            else f"No direct match, defaulting to {best_model.name}"
+        )
+
+        return {
+            "success": True,
+            "model": asdict(best_model),
+            "score": best_score,
+            "reason": reason
+        }
+
+    def select_agent_for_task(self, description: str) -> Optional[str]:
+        """Select best-fit agent for task description"""
+        if not self.agents:
+            return None
+
+        keywords = set(re.findall(r"\w+", description.lower()))
+        best_agent = None
+        best_score = -1
+
+        for agent in self.agents.values():
+            capabilities = {cap.lower() for cap in agent.capabilities}
+            score = len(keywords & capabilities)
+            if score > best_score:
+                best_score = score
+                best_agent = agent
+
+        if best_score <= 0 and "analyzer_01" in self.agents:
+            return "analyzer_01"
+
+        return best_agent.agent_id if best_agent else None
+
+    def create_workflow(self, workflow_id: str, name: str, description: str,
+                        steps: List[Any]) -> Workflow:
+        """Create a new workflow"""
+        workflow_steps = []
+        for idx, step in enumerate(steps, start=1):
+            if isinstance(step, WorkflowStep):
+                workflow_steps.append(step)
+            else:
+                workflow_steps.append(WorkflowStep(
+                    step_id=f"{workflow_id}_step_{idx}",
+                    description=step.get("description", ""),
+                    priority=step.get("priority", 5),
+                    assigned_to=step.get("assigned_to")
+                ))
+
+        workflow = Workflow(
+            workflow_id=workflow_id,
+            name=name,
+            description=description,
+            steps=workflow_steps
+        )
+        self.workflows[workflow_id] = workflow
+        self._log_action("workflow_created", {"workflow": self._workflow_to_dict(workflow)})
+        return workflow
+
+    def list_workflows(self) -> List[Dict[str, Any]]:
+        """List workflows"""
+        return [self._workflow_to_dict(workflow) for workflow in self.workflows.values()]
+
+    def execute_workflow(self, workflow_id: str) -> Dict[str, Any]:
+        """Execute workflow steps sequentially"""
+        workflow = self.workflows.get(workflow_id)
+        if not workflow:
+            return {"success": False, "error": "Workflow not found"}
+
+        workflow.status = "executing"
+        workflow.executed_at = datetime.now().isoformat()
+        workflow.results = []
+
+        run_suffix = datetime.now().strftime("%H%M%S")
+        for idx, step in enumerate(workflow.steps, start=1):
+            task_id = f"{workflow.workflow_id}_{idx}_{run_suffix}"
+            step.status = "executing"
+            task = self.create_task(task_id, step.description, priority=step.priority)
+
+            agent_id = step.assigned_to or self.select_agent_for_task(step.description)
+            if not agent_id:
+                step.status = "failed"
+                step.result = {"success": False, "error": "No agent available"}
+                workflow.results.append(step.result)
+                continue
+
+            if not self.assign_task(task.task_id, agent_id):
+                step.status = "failed"
+                step.result = {"success": False, "error": "Task assignment failed"}
+                workflow.results.append(step.result)
+                continue
+
+            step.assigned_to = agent_id
+            result = self.execute_task(task.task_id)
+            step.result = result
+            step.status = "completed" if result.get("success") else "failed"
+            workflow.results.append(result)
+
+        workflow.status = (
+            "completed"
+            if all(step.status == "completed" for step in workflow.steps)
+            else "partial"
+        )
+        self._log_action("workflow_executed", {"workflow": self._workflow_to_dict(workflow)})
+
+        return {
+            "success": workflow.status == "completed",
+            "workflow": self._workflow_to_dict(workflow)
+        }
+
+    def _workflow_to_dict(self, workflow: Workflow) -> Dict[str, Any]:
+        workflow_dict = asdict(workflow)
+        workflow_dict["steps"] = [
+            {
+                **asdict(step),
+                "assigned_to": step.assigned_to
+            }
+            for step in workflow.steps
+        ]
+        return workflow_dict
+
+    def _register_default_models(self):
+        defaults = [
+            ModelProfile(
+                model_id="gpt_4",
+                name="GPT-4",
+                provider="OpenAI",
+                strengths=["code", "analysis", "reasoning", "planning"]
+            ),
+            ModelProfile(
+                model_id="claude_3_5",
+                name="Claude 3.5",
+                provider="Anthropic",
+                strengths=["writing", "analysis", "summarize", "strategy"]
+            ),
+            ModelProfile(
+                model_id="gemini_1_5",
+                name="Gemini 1.5",
+                provider="Google",
+                strengths=["multimodal", "long-context", "research", "vision"]
+            ),
+            ModelProfile(
+                model_id="perplexity",
+                name="Perplexity",
+                provider="Perplexity AI",
+                strengths=["search", "citations", "research", "browsing"]
+            ),
+            ModelProfile(
+                model_id="minimax",
+                name="Minimax",
+                provider="Minimax",
+                strengths=["planning", "workflow", "coordination", "automation"]
+            )
+        ]
+
+        for model in defaults:
+            self.models[model.model_id] = model
 
     def get_agent_model_info(self, agent_id: str = None) -> Dict[str, Any]:
         """Get model and version information for agents"""
