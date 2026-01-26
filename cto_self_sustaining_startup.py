@@ -152,6 +152,8 @@ def check_system_health():
 
 def run_startup():
     """Main startup sequence"""
+    if os.environ.get("ROWBOAT_STARTUP") == "1":
+        return True
     print("\n🚀 CTO Self-Sustaining System - Startup Sequence")
     print("=" * 50)
     
