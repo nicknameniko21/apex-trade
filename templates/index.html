@@ -464,6 +464,9 @@
 
         function updateLogs(logs) {
             const list = document.getElementById('logs-list');
+            if (!list) {
+                return;
+            }
             if (logs.length === 0) {
                 list.innerHTML = '<p style="color: #999;">No logs</p>';
                 return;

@@ -29,3 +29,24 @@ def test_rowboat_resolve_host_rowboat(monkeypatch):
     monkeypatch.delenv("HOST", raising=False)
     monkeypatch.setenv("ROWBOAT_STARTUP", "1")
     assert rowboat.resolve_host(None) == "0.0.0.0"
+
+
+def test_rowboat_resolve_host_env_override(monkeypatch):
+    rowboat = importlib.import_module("rowboat")
+    monkeypatch.setenv("HOST", "192.168.1.10")
+    monkeypatch.setenv("ROWBOAT_STARTUP", "1")
+    assert rowboat.resolve_host(None) == "192.168.1.10"
+
+
+def test_rowboat_resolve_host_port_default(monkeypatch):
+    rowboat = importlib.import_module("rowboat")
+    monkeypatch.delenv("HOST", raising=False)
+    monkeypatch.delenv("ROWBOAT_STARTUP", raising=False)
+    assert rowboat.resolve_host("8080") == "0.0.0.0"
+
+
+def test_rowboat_resolve_host_rowboat_disabled(monkeypatch):
+    rowboat = importlib.import_module("rowboat")
+    monkeypatch.delenv("HOST", raising=False)
+    monkeypatch.setenv("ROWBOAT_STARTUP", "0")
+    assert rowboat.resolve_host(None) == "127.0.0.1"
