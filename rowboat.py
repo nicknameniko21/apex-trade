@@ -20,6 +20,17 @@ def get_app():
     return app
 
 
+def resolve_host(port_value):
+    host = os.environ.get("HOST")
+    if host:
+        return host
+    if os.environ.get("ROWBOAT_STARTUP") == "1":
+        return ROWBOAT_HOST
+    if port_value is not None:
+        return ROWBOAT_HOST
+    return DEFAULT_HOST
+
+
 def main():
     os.environ.setdefault("ROWBOAT_STARTUP", "1")
     run_startup()
@@ -33,10 +44,7 @@ def main():
         except ValueError:
             logger.warning("Invalid PORT value %r, defaulting to %s", port_value, DEFAULT_PORT)
             port = DEFAULT_PORT
-    host = os.environ.get("HOST")
-    if host is None:
-        # Rowboat sets PORT; default to 0.0.0.0 for platform compatibility when PORT is present.
-        host = ROWBOAT_HOST if port_value is not None else DEFAULT_HOST
+    host = resolve_host(port_value)
     if host == "0.0.0.0":
         logger.warning(
             "HOST is set to 0.0.0.0, exposing the service on all interfaces; "
