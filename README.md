@@ -20,9 +20,13 @@ This repository serves as the permanent brain memory for the CTO autonomous AI a
 - `learning_patterns/` - Patterns and frameworks learned
 - `integration_frameworks/` - System integration designs
 - `knowledge_base/` - General learned knowledge and insights
-- `session_state restoration data
-- `auto_backup.sh/` - Current session` - Automatic backup script
+- `session_state` - Restoration data
+- `auto_backup.sh` - Automatic backup script
 - `backup.log` - Backup activity log
+
+### Deployment
+
+- **Vercel**: Deploy the Flask UI via `api/index.py` as the Vercel entrypoint.
 
 ## Purpose
 
