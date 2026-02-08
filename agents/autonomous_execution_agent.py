@@ -6,6 +6,7 @@ Handles autonomous task execution, decision-making, and optimization
 
 import json
 import logging
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
@@ -89,10 +90,13 @@ class AutonomousAgent:
 
 
 class CodeExecutionAgent(AutonomousAgent):
-    """Agent specialized in code execution and testing"""
+    """Agent specialized in code execution and testing with GitHub integration"""
 
-    def __init__(self):
-        super().__init__("code_executor_01", ["execute", "test", "debug", "optimize"])
+    def __init__(self, workspace_dir: str = None):
+        super().__init__("code_executor_01", ["execute", "test", "debug", "optimize", "github"])
+        self.workspace_dir = Path(workspace_dir) if workspace_dir else Path.cwd()
+        self.execution_log = self.workspace_dir / "action_logs" / "code_execution.log"
+        self.execution_log.parent.mkdir(parents=True, exist_ok=True)
 
     def execute_code(self, code_path: str) -> Dict[str, Any]:
         """Execute Python code safely"""
@@ -109,10 +113,117 @@ class CodeExecutionAgent(AutonomousAgent):
             }
 
             self.learn_from_execution(result)
+            self._log_execution(result)
+            
+            # Auto-push to GitHub
+            self.push_to_github(code_path, f"Auto-execute: {Path(code_path).name}")
+            
             return result
         except Exception as e:
             logger.error(f"Code execution failed: {e}")
             return {"success": False, "error": str(e)}
+
+    def push_to_github(self, file_path: str, commit_message: str) -> Dict[str, Any]:
+        """Push code execution results to GitHub"""
+        try:
+            # Stage changes
+            subprocess.run(
+                ["git", "add", file_path],
+                cwd=str(self.workspace_dir),
+                capture_output=True,
+                check=True
+            )
+            
+            # Commit
+            subprocess.run(
+                ["git", "commit", "-m", commit_message],
+                cwd=str(self.workspace_dir),
+                capture_output=True,
+                check=True
+            )
+            
+            # Push
+            subprocess.run(
+                ["git", "push"],
+                cwd=str(self.workspace_dir),
+                capture_output=True,
+                check=True
+            )
+            
+            result = {
+                "success": True,
+                "action": "github_push",
+                "file": file_path,
+                "message": commit_message,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            logger.info(f"Pushed to GitHub: {file_path}")
+            self._log_execution(result)
+            return result
+            
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Git push skipped (no changes or network issue): {e}")
+            return {"success": False, "error": str(e)}
+        except Exception as e:
+            logger.error(f"GitHub push failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    def create_github_branch(self, branch_name: str) -> Dict[str, Any]:
+        """Create and switch to GitHub branch"""
+        try:
+            subprocess.run(
+                ["git", "checkout", "-b", branch_name],
+                cwd=str(self.workspace_dir),
+                capture_output=True,
+                check=True
+            )
+            
+            result = {
+                "success": True,
+                "action": "github_branch",
+                "branch": branch_name,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            logger.info(f"Created branch: {branch_name}")
+            self._log_execution(result)
+            return result
+            
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Branch creation failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    def pull_from_github(self) -> Dict[str, Any]:
+        """Pull latest changes from GitHub"""
+        try:
+            result = subprocess.run(
+                ["git", "pull"],
+                cwd=str(self.workspace_dir),
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            
+            pull_result = {
+                "success": True,
+                "action": "github_pull",
+                "output": result.stdout,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            logger.info("Pulled latest from GitHub")
+            self._log_execution(pull_result)
+            return pull_result
+            
+        except subprocess.CalledProcessError as e:
+            logger.error(f"GitHub pull failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    def _log_execution(self, data: Dict[str, Any]):
+        """Log execution event to file"""
+        with open(self.execution_log, 'a') as f:
+            f.write(json.dumps(data) + "\n")
 
 
 class DataAnalysisAgent(AutonomousAgent):

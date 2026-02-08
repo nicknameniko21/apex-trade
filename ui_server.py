@@ -17,6 +17,8 @@ from agents.swarm_intelligence_agent import SwarmIntelligenceAgent, AgentRole
 from agents.autonomous_execution_agent import (
     CodeExecutionAgent, DataAnalysisAgent, OptimizationAgent
 )
+from agents.autonomous_task_generator import AutonomousTaskGenerator
+from agents.pine_scripts_manager import PineScriptsManager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,26 +30,151 @@ CORS(app)
 workspace = Path(__file__).parent
 swarm = None
 autonomous_agents = {}
-
-
-def initialize_swarm():
-    """Initialize swarm on startup"""
-    global swarm, autonomous_agents
-    swarm = SwarmIntelligenceAgent(str(workspace))
-    
-    # Create autonomous agents
-    autonomous_agents = {
-        "code_executor": CodeExecutionAgent(),
-        "data_analyst": DataAnalysisAgent(),
-        "optimizer": OptimizationAgent()
-    }
-    logger.info("Swarm and autonomous agents initialized")
+pine_manager = None
+task_generator = None
+learning_thread = None
+learning_active = False
 
 
 @app.route('/')
 def index():
     """Serve main UI"""
     return render_template('index.html')
+
+
+def start_continuous_learning():
+    """Start background learning loop"""
+    global learning_thread, learning_active
+    
+    if learning_active:
+        logger.warning("Learning loop already running")
+        return
+    
+    learning_active = True
+    learning_thread = threading.Thread(target=_continuous_learning_worker, daemon=True)
+    learning_thread.start()
+    logger.info("Background learning loop started")
+
+
+def _continuous_learning_worker():
+    """Background worker for continuous learning"""
+    global learning_active, task_generator
+    
+    learning_cycle = 0
+    while learning_active:
+        try:
+            learning_cycle += 1
+            logger.info(f"Learning cycle {learning_cycle} starting...")
+            
+            # Generate learning tasks
+            task_ids = task_generator.generate_learning_tasks()
+            logger.info(f"Cycle {learning_cycle}: Generated {len(task_ids)} tasks")
+            
+            # Execute tasks
+            results = task_generator.execute_all_tasks()
+            logger.info(f"Cycle {learning_cycle}: Executed {len(results['executed'])} tasks")
+            
+            # Generate adaptive tasks based on patterns
+            adaptive_ids = task_generator.generate_adaptive_tasks()
+            if adaptive_ids:
+                # Execute adaptive tasks
+                adaptive_results = task_generator.execute_all_tasks()
+                logger.info(f"Cycle {learning_cycle}: {len(adaptive_ids)} adaptive tasks executed")
+            
+            # Save learning state
+            _save_learning_state()
+            
+            # Wait before next cycle
+            time.sleep(60)  # 60 second interval
+            
+        except Exception as e:
+            logger.error(f"Learning cycle error: {e}")
+            time.sleep(10)  # Shorter wait on error
+
+
+def _save_learning_state():
+    """Persist learned patterns to disk"""
+    try:
+        learning_state = {
+            "timestamp": datetime.now().isoformat(),
+            "agents": {}
+        }
+        
+        for agent_id, agent in autonomous_agents.items():
+            if hasattr(agent, 'learned_patterns'):
+                learning_state["agents"][agent_id] = {
+                    "id": agent.agent_id,
+                    "patterns": agent.learned_patterns,
+                    "task_history_size": len(agent.task_history)
+                }
+        
+        # Save to file
+        state_file = workspace / "action_logs" / "learning_state.json"
+        with open(state_file, 'w') as f:
+            json.dump(learning_state, f, indent=2)
+        
+        logger.info(f"Learning state saved with {len(learning_state['agents'])} agents")
+    except Exception as e:
+        logger.error(f"Failed to save learning state: {e}")
+
+
+def stop_continuous_learning():
+    """Stop background learning loop"""
+    global learning_active
+    learning_active = False
+    logger.info("Background learning loop stopping...")
+    
+    
+def initialize_swarm():
+    """Initialize swarm on startup"""
+    global swarm, autonomous_agents, pine_manager, task_generator
+    swarm = SwarmIntelligenceAgent(str(workspace))
+    
+    # Create autonomous agents with GitHub integration
+    autonomous_agents = {
+        "code_executor": CodeExecutionAgent(str(workspace)),
+        "data_analyst": DataAnalysisAgent(),
+        "optimizer": OptimizationAgent()
+    }
+    
+    # Register agents with swarm
+    for agent_id, agent in autonomous_agents.items():
+        swarm.register_agent(
+            agent_id=agent_id,
+            name=agent.agent_id,
+            role=AgentRole.EXECUTOR,
+            capabilities=agent.capabilities
+        )
+    
+    # Initialize Pine Scripts Manager
+    pine_manager = PineScriptsManager(str(workspace))
+    scripts = pine_manager.discover_scripts()
+    
+    if scripts:
+        logger.info(f"Loaded {len(scripts)} Pine Scripts")
+        # Auto-fix broken scripts
+        for script in scripts:
+            validation = pine_manager.validate_script(script)
+            if not validation["valid"]:
+                logger.warning(f"Fixing broken script: {script.name}")
+                pine_manager.fix_broken_script(script.name)
+        pine_manager.cache_scripts()
+    
+    # Initialize task generator for autonomous learning
+    task_generator = AutonomousTaskGenerator(swarm, str(workspace))
+    
+    # Generate initial learning tasks
+    task_ids = task_generator.generate_learning_tasks()
+    logger.info(f"Generated {len(task_ids)} learning tasks")
+    
+    # Execute initial tasks
+    results = task_generator.execute_all_tasks()
+    logger.info(f"Executed {len(results['executed'])} initial tasks, failed: {len(results['failed'])}")
+    
+    # Start continuous background learning
+    start_continuous_learning()
+    
+    logger.info("Swarm and autonomous agents initialized with continuous learning")
 
 
 @app.route('/api/agents', methods=['GET'])
@@ -350,6 +477,209 @@ def chat_history():
     except Exception as e:
         logger.error(f"Error getting chat history: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/pine-scripts', methods=['GET'])
+def get_pine_scripts():
+    """Get all Pine Scripts"""
+    if not pine_manager:
+        return jsonify({"scripts": [], "error": "Pine manager not initialized"}), 503
+    
+    scripts = pine_manager.get_all_scripts()
+    return jsonify({
+        "scripts": [
+            {
+                "name": s.name,
+                "status": s.status,
+                "version": s.version,
+                "path": s.path,
+                "last_updated": s.last_updated
+            }
+            for s in scripts
+        ],
+        "total": len(scripts)
+    })
+
+
+@app.route('/api/pine-scripts/<script_name>', methods=['GET'])
+def get_pine_script(script_name):
+    """Get specific Pine Script"""
+    if not pine_manager:
+        return jsonify({"error": "Pine manager not initialized"}), 503
+    
+    script = pine_manager.get_script(script_name)
+    if not script:
+        return jsonify({"error": "Script not found"}), 404
+    
+    return jsonify({
+        "name": script.name,
+        "content": script.content,
+        "status": script.status,
+        "version": script.version,
+        "path": script.path
+    })
+
+
+@app.route('/api/pine-scripts/<script_name>/validate', methods=['POST'])
+def validate_pine_script(script_name):
+    """Validate Pine Script"""
+    if not pine_manager:
+        return jsonify({"error": "Pine manager not initialized"}), 503
+    
+    script = pine_manager.get_script(script_name)
+    if not script:
+        return jsonify({"error": "Script not found"}), 404
+    
+    validation = pine_manager.validate_script(script)
+    return jsonify(validation)
+
+
+@app.route('/api/pine-scripts/<script_name>/fix', methods=['POST'])
+def fix_pine_script(script_name):
+    """Fix broken Pine Script"""
+    if not pine_manager:
+        return jsonify({"error": "Pine manager not initialized"}), 503
+    
+    success = pine_manager.fix_broken_script(script_name)
+    if success:
+        pine_manager.cache_scripts()
+        return jsonify({"success": True, "message": f"Fixed {script_name}"})
+    
+    return jsonify({"success": False, "error": "Could not fix script"}), 400
+
+
+@app.route('/api/github/push', methods=['POST'])
+def github_push():
+    """Push code to GitHub"""
+    data = request.json
+    file_path = data.get("file_path", ".")
+    commit_message = data.get("message", f"Auto-commit from UI - {datetime.now().isoformat()}")
+    
+    code_agent = autonomous_agents.get("code_executor")
+    if not code_agent:
+        return jsonify({"error": "Code executor not initialized"}), 503
+    
+    result = code_agent.push_to_github(file_path, commit_message)
+    return jsonify(result), (200 if result["success"] else 400)
+
+
+@app.route('/api/github/pull', methods=['POST'])
+def github_pull():
+    """Pull from GitHub"""
+    code_agent = autonomous_agents.get("code_executor")
+    if not code_agent:
+        return jsonify({"error": "Code executor not initialized"}), 503
+    
+    result = code_agent.pull_from_github()
+    return jsonify(result), (200 if result["success"] else 400)
+
+
+@app.route('/api/github/branch', methods=['POST'])
+def github_branch():
+    """Create GitHub branch"""
+    data = request.json
+    branch_name = data.get("branch_name")
+    
+    if not branch_name:
+        return jsonify({"error": "branch_name required"}), 400
+    
+    code_agent = autonomous_agents.get("code_executor")
+    if not code_agent:
+        return jsonify({"error": "Code executor not initialized"}), 503
+    
+    result = code_agent.create_github_branch(branch_name)
+    return jsonify(result), (200 if result["success"] else 400)
+
+
+@app.route('/api/swarm/learning-status', methods=['GET'])
+def get_learning_status():
+    """Get swarm learning progress"""
+    if not task_generator:
+        return jsonify({"error": "Task generator not initialized"}), 503
+    
+    status = task_generator.get_agent_learning_status()
+    
+    # Add task statistics
+    status["task_statistics"] = {
+        "total_tasks": len(swarm.tasks) if swarm else 0,
+        "executed_tasks": sum(1 for t in (swarm.tasks.values() if swarm else []) if t.status == "completed"),
+        "pending_tasks": sum(1 for t in (swarm.tasks.values() if swarm else []) if t.status in ["pending", "assigned"])
+    }
+    
+    return jsonify(status)
+
+
+@app.route('/api/swarm/generate-tasks', methods=['POST'])
+def generate_tasks():
+    """Generate new learning tasks"""
+    if not task_generator:
+        return jsonify({"error": "Task generator not initialized"}), 503
+    
+    data = request.json or {}
+    task_type = data.get("type", "learning")
+    
+    if task_type == "adaptive":
+        task_ids = task_generator.generate_adaptive_tasks()
+    else:
+        task_ids = task_generator.generate_learning_tasks()
+    
+    # Execute tasks
+    results = task_generator.execute_all_tasks()
+    
+    return jsonify({
+        "success": True,
+        "tasks_generated": len(task_ids),
+        "tasks_executed": len(results["executed"]),
+        "results": results
+    })
+
+
+@app.route('/api/swarm/learning/start', methods=['POST'])
+def start_learning():
+    """Start background learning loop"""
+    global learning_active
+    
+    if learning_active:
+        return jsonify({"success": False, "error": "Learning already running"}), 400
+    
+    start_continuous_learning()
+    return jsonify({"success": True, "message": "Background learning started"})
+
+
+@app.route('/api/swarm/learning/stop', methods=['POST'])
+def stop_learning():
+    """Stop background learning loop"""
+    global learning_active
+    
+    if not learning_active:
+        return jsonify({"success": False, "error": "Learning not running"}), 400
+    
+    stop_continuous_learning()
+    return jsonify({"success": True, "message": "Background learning stopped"})
+
+
+@app.route('/api/swarm/learning/status', methods=['GET'])
+def learning_status():
+    """Get learning loop status"""
+    global learning_active
+    
+    status_file = workspace / "action_logs" / "learning_state.json"
+    last_update = None
+    learning_data = None
+    
+    if status_file.exists():
+        try:
+            with open(status_file) as f:
+                learning_data = json.load(f)
+                last_update = learning_data.get("timestamp")
+        except:
+            pass
+    
+    return jsonify({
+        "learning_active": learning_active,
+        "last_update": last_update,
+        "learning_data": learning_data
+    })
 
 
 if __name__ == '__main__':

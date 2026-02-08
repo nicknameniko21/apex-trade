@@ -1,0 +1,11 @@
+
+//@version=5
+strategy("Test", overlay=false)
+
+sellSignalRaw = (
+    (enableEMA and sellCondition1) or
+    (enableBB and sellCondition2) or
+    (enableRSI and enableFMA and enableBB and sellCondition3)
+)
+
+plot(sellSignalRaw)
