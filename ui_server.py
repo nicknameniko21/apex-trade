@@ -682,6 +682,116 @@ def learning_status():
     })
 
 
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    """Chat with agents - converts user queries into learning tasks"""
+    if not task_generator or not swarm:
+        return jsonify({"error": "System not initialized"}), 503
+    
+    data = request.json or {}
+    user_message = data.get("message", "").strip()
+    
+    if not user_message:
+        return jsonify({"error": "Empty message"}), 400
+    
+    logger.info(f"User query: {user_message}")
+    
+    # Create a custom task from the user query
+    custom_task_id = f"user_query_{int(time.time())}"
+    task_description = f"User asked: {user_message}"
+    
+    try:
+        # Create and execute the task
+        task = swarm.create_task(
+            task_id=custom_task_id,
+            description=task_description,
+            priority=1,  # User queries get high priority
+            task_type="user_query"
+        )
+        
+        # Assign to an available agent
+        available_agents = [aid for aid in autonomous_agents.keys() 
+                          if autonomous_agents[aid].status == 'idle']
+        
+        if not available_agents:
+            available_agents = [list(autonomous_agents.keys())[0]]
+        
+        agent_id = available_agents[0]
+        swarm.assign_task(task, agent_id)
+        result = swarm.execute_task(task, agent_id)
+        
+        # Log the interaction
+        logger.info(f"Task {custom_task_id} assigned to {agent_id}: {result}")
+        
+        # Record learning from this interaction
+        agent = autonomous_agents[agent_id]
+        if result.get("success"):
+            agent.learned_patterns.setdefault("user_query", {"successes": 0, "failures": 0})
+            agent.learned_patterns["user_query"]["successes"] += 1
+        else:
+            agent.learned_patterns.setdefault("user_query", {"successes": 0, "failures": 0})
+            agent.learned_patterns["user_query"]["failures"] += 1
+        
+        return jsonify({
+            "success": True,
+            "agent": agent_id,
+            "task_id": custom_task_id,
+            "message": f"Task processed by {agent_id}",
+            "result": result.get("message", "Task completed")
+        })
+    
+    except Exception as e:
+        logger.error(f"Error processing chat: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/chat/history', methods=['GET'])
+def get_chat_history():
+    """Get chat history and interactions"""
+    history_file = workspace / "action_logs" / "chat_history.json"
+    
+    if history_file.exists():
+        try:
+            with open(history_file) as f:
+                history = json.load(f)
+                return jsonify({"success": True, "history": history})
+        except:
+            pass
+    
+    return jsonify({"success": True, "history": []})
+
+
+@app.route('/api/agents/<agent_id>/chat', methods=['POST'])
+def agent_chat(agent_id):
+    """Chat directly with a specific agent"""
+    if agent_id not in autonomous_agents:
+        return jsonify({"error": f"Agent {agent_id} not found"}), 404
+    
+    data = request.json or {}
+    message = data.get("message", "").strip()
+    
+    if not message:
+        return jsonify({"error": "Empty message"}), 400
+    
+    agent = autonomous_agents[agent_id]
+    
+    # Execute the message as a task for this agent
+    try:
+        result = agent.execute_code(message)
+        logger.info(f"Agent {agent_id} processed: {message}")
+        
+        return jsonify({
+            "success": True,
+            "agent": agent_id,
+            "message": message,
+            "response": result.get("message", "Task completed"),
+            "learning_stats": agent.learned_patterns
+        })
+    except Exception as e:
+        logger.error(f"Error in agent chat: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == '__main__':
     initialize_swarm()
     logger.info("Starting Swarm Intelligence UI on http://localhost:5000")

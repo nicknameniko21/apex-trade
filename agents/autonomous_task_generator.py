@@ -64,6 +64,30 @@ class AutonomousTaskGenerator:
                 "type": "security",
                 "priority": 1
             },
+            {
+                "id": "learn_fix_errors",
+                "desc": "find and fix code syntax errors in pine scripts",
+                "type": "error_fixing",
+                "priority": 1
+            },
+            {
+                "id": "learn_architecture_review",
+                "desc": "review system architecture for improvements",
+                "type": "architecture",
+                "priority": 2
+            },
+            {
+                "id": "learn_integration_testing",
+                "desc": "test integration between system components",
+                "type": "integration",
+                "priority": 2
+            },
+            {
+                "id": "learn_dependency_analysis",
+                "desc": "analyze dependencies and suggest updates",
+                "type": "dependencies",
+                "priority": 3
+            }
         ]
 
         created_ids = []
@@ -173,20 +197,106 @@ class AutonomousTaskGenerator:
 
         return adaptive_tasks
 
+    def detect_code_issues(self) -> List[Dict[str, Any]]:
+        """Scan codebase for issues and create learning tasks"""
+        issues = []
+        
+        try:
+            # Check Pine Scripts for syntax errors
+            pine_dir = self.workspace_dir / "pine_scripts"
+            if pine_dir.exists():
+                for pine_file in pine_dir.glob("*.pine"):
+                    try:
+                        content = pine_file.read_text()
+                        # Look for common issues
+                        if "end of line without line continuation" in content or \
+                           content.count("or") > content.count(" or ") or \
+                           content.count("and") > content.count(" and "):
+                            issues.append({
+                                "file": str(pine_file.name),
+                                "type": "syntax_error",
+                                "priority": 1
+                            })
+                    except Exception as e:
+                        logger.warning(f"Error checking {pine_file}: {e}")
+            
+            # Create learning tasks for each issue found
+            for issue in issues:
+                task_id = f"fix_{issue['type']}_{issue['file'].replace('.', '_')}"
+                try:
+                    task = self.swarm.create_task(
+                        task_id=task_id,
+                        description=f"Fix {issue['type']} in {issue['file']}",
+                        priority=issue['priority']
+                    )
+                    logger.info(f"Created error-fixing task: {task_id}")
+                except Exception as e:
+                    logger.error(f"Failed to create fix task: {e}")
+        
+        except Exception as e:
+            logger.warning(f"Error during code issue detection: {e}")
+        
+        return issues
+
+    def learn_from_failures(self) -> Dict[str, Any]:
+        """Analyze failed tasks and create targeted learning tasks"""
+        learning_focus = {
+            "timestamp": datetime.now().isoformat(),
+            "created_tasks": []
+        }
+
+        try:
+            # Look for agents with low success rates
+            for agent_id, agent in self.swarm.agents.items():
+                if hasattr(agent, 'learned_patterns'):
+                    for task_type, pattern in agent.learned_patterns.items():
+                        total = pattern.get('successes', 0) + pattern.get('failures', 0)
+                        if total > 0:
+                            success_rate = pattern['successes'] / total
+                            if success_rate < 0.7:  # Less than 70% success
+                                # Create focused learning task
+                                task_id = f"practice_{task_type}_{agent_id}"
+                                try:
+                                    task = self.swarm.create_task(
+                                        task_id=task_id,
+                                        description=f"Practice {task_type} (success rate: {success_rate:.1%})",
+                                        priority=1
+                                    )
+                                    learning_focus["created_tasks"].append(task_id)
+                                    logger.info(f"Created practice task for {agent_id}: {task_type}")
+                                except Exception as e:
+                                    logger.error(f"Failed to create practice task: {e}")
+        
+        except Exception as e:
+            logger.warning(f"Error analyzing failures: {e}")
+        
+        return learning_focus
+
     async def continuous_learning_loop(self, interval_seconds: int = 60):
         """Run continuous learning loop"""
         logger.info(f"Starting autonomous learning loop (interval: {interval_seconds}s)")
 
         while True:
             try:
-                # Generate and execute learning tasks
+                # 1. Detect code issues and create fix tasks
+                issues = self.detect_code_issues()
+                if issues:
+                    logger.info(f"Detected {len(issues)} code issues to fix")
+                
+                # 2. Generate standard learning tasks
                 task_ids = self.generate_learning_tasks()
                 logger.info(f"Generated {len(task_ids)} learning tasks")
 
+                # 3. Execute all tasks
                 results = self.execute_all_tasks()
-                logger.info(f"Executed {len(results['executed'])} tasks")
+                logger.info(f"Executed {len(results['executed'])} tasks, {len(results['failed'])} failed")
 
-                # Generate adaptive tasks based on learning
+                # 4. Analyze failures and create practice tasks
+                focus = self.learn_from_failures()
+                if focus["created_tasks"]:
+                    logger.info(f"Created {len(focus['created_tasks'])} focused learning tasks")
+
+                # 5. Generate adaptive tasks based on learning
                 adaptive_ids = self.generate_adaptive_tasks()
                 if adaptive_ids:
                     logger.info(f"Generated {len(adaptive_ids)} adaptive tasks")
