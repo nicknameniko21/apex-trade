@@ -24,9 +24,46 @@ This repository serves as the permanent brain memory for the CTO autonomous AI a
 - `auto_backup.sh` - Automatic backup script
 - `backup.log` - Backup activity log
 
-### Deployment
+### Deployment & Access
 
-- **Vercel**: Deploy the Flask UI via `api/index.py` as the Vercel entrypoint.
+#### Deploy to Vercel (Recommended)
+
+1. **Connect to Vercel**:
+   - Go to [vercel.com](https://vercel.com) and sign in
+   - Click "Add New Project"
+   - Import your `apex-trade` repository from GitHub
+   - Vercel will automatically detect the configuration from `vercel.json`
+
+2. **Deploy**:
+   - Click "Deploy" - no additional configuration needed
+   - Wait for deployment to complete (usually 1-2 minutes)
+
+3. **Access Your Application**:
+   - Once deployed, Vercel will provide a URL (e.g., `your-project.vercel.app`)
+   - Click the URL to open the Swarm Intelligence Control Center
+   - The UI will be available at the root path (`/`)
+   - API endpoints are accessible at `/api/*`
+
+#### Run Locally for Development
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the server
+python ui_server.py
+
+# Access at http://localhost:5000
+```
+
+**Technical Details**:
+- The Flask UI is served via `api/index.py` as the Vercel entrypoint
+- All routes are handled by the Flask app defined in `ui_server.py`
+- Configuration: `vercel.json`, dependencies: `requirements.txt`
+
+**📚 Detailed Guides**:
+- [DEPLOYMENT.md](DEPLOYMENT.md) - Complete deployment guide with troubleshooting
+- [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md) - Local development setup and workflow
 
 ## Purpose
 
