@@ -81,6 +81,7 @@ class SwarmIntelligenceAgent:
             role=role,
             capabilities=capabilities
         )
+        agent.status = "active"
         self.agents[agent_id] = agent
         logger.info(f"Agent registered: {name} ({role.value})")
         agent_dict = asdict(agent)
@@ -100,6 +101,48 @@ class SwarmIntelligenceAgent:
         self._log_action("task_created", {"task": asdict(task)})
         return task
 
+    def select_agent_for_task(self, description: str) -> Optional[Agent]:
+        """Select the best agent for a task description"""
+        if not self.agents:
+            return None
+
+        task_keywords = set(description.lower().split())
+        best_agent = None
+        best_score = -1
+
+        for agent in self.agents.values():
+            capabilities = {cap.lower() for cap in agent.capabilities}
+            capabilities.add(agent.role.value)
+            score = len(task_keywords & capabilities)
+            if score > best_score:
+                best_agent = agent
+                best_score = score
+
+        return best_agent or next(iter(self.agents.values()))
+
+    def auto_assign_and_execute(
+        self,
+        task_id: str,
+        preferred_agent_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Assign task to best agent and execute"""
+        task = self.tasks.get(task_id)
+        if not task:
+            return {"success": False, "error": "Task not found"}
+
+        agent = None
+        if preferred_agent_id and preferred_agent_id in self.agents:
+            agent = self.agents[preferred_agent_id]
+        else:
+            agent = self.select_agent_for_task(task.description)
+        if not agent:
+            return {"success": False, "error": "No agents available"}
+
+        if not self.assign_task(task_id, agent.agent_id):
+            return {"success": False, "error": "Assignment failed"}
+
+        return self.execute_task(task_id)
+
     def assign_task(self, task_id: str, agent_id: str) -> bool:
         """Assign a task to an agent"""
         if task_id not in self.tasks or agent_id not in self.agents:
@@ -111,7 +154,8 @@ class SwarmIntelligenceAgent:
 
         # Check if agent has required capabilities
         task_keywords = set(task.description.lower().split())
-        agent_capabilities = set(agent.capabilities)
+        agent_capabilities = {cap.lower() for cap in agent.capabilities}
+        matched_capabilities = sorted(task_keywords & agent_capabilities)
 
         task.assigned_to = agent_id
         task.status = "assigned"
@@ -120,7 +164,8 @@ class SwarmIntelligenceAgent:
         self._log_action("task_assigned", {
             "task_id": task_id,
             "agent_id": agent_id,
-            "agent_name": agent.name
+            "agent_name": agent.name,
+            "matched_capabilities": matched_capabilities
         })
         return True
 
@@ -137,6 +182,7 @@ class SwarmIntelligenceAgent:
 
         agent = self.agents[task.assigned_to]
         task.status = "executing"
+        agent.status = "executing"
 
         logger.info(f"Executing task {task_id} with {agent.name}")
 
@@ -154,6 +200,7 @@ class SwarmIntelligenceAgent:
         task.completed_at = datetime.now().isoformat()
         task.result = result
         agent.tasks_completed += 1
+        agent.status = "active"
 
         self._log_action("task_executed", result)
         return result

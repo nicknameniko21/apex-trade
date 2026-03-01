@@ -9,9 +9,6 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, List
-import threading
-import time
 
 from agents.swarm_intelligence_agent import SwarmIntelligenceAgent, AgentRole
 from agents.autonomous_execution_agent import (
@@ -34,7 +31,37 @@ def initialize_swarm():
     """Initialize swarm on startup"""
     global swarm, autonomous_agents
     swarm = SwarmIntelligenceAgent(str(workspace))
-    
+    swarm.register_agent(
+        "coordinator_01",
+        "Coordinator",
+        AgentRole.COORDINATOR,
+        ["coordinate", "delegate", "optimize", "plan"]
+    )
+    swarm.register_agent(
+        "analyzer_01",
+        "Analyzer",
+        AgentRole.ANALYZER,
+        ["analyze", "review", "audit", "scan", "lint"]
+    )
+    swarm.register_agent(
+        "executor_01",
+        "Executor",
+        AgentRole.EXECUTOR,
+        ["execute", "run", "test", "deploy", "build"]
+    )
+    swarm.register_agent(
+        "monitor_01",
+        "Monitor",
+        AgentRole.MONITOR,
+        ["monitor", "alert", "health", "uptime", "metrics"]
+    )
+    swarm.register_agent(
+        "communicator_01",
+        "Communicator",
+        AgentRole.COMMUNICATOR,
+        ["communicate", "report", "summarize", "respond"]
+    )
+
     # Create autonomous agents
     autonomous_agents = {
         "code_executor": CodeExecutionAgent(),
@@ -123,14 +150,18 @@ def create_task():
             return jsonify({"success": False, "error": "Description required"}), 400
         
         task = swarm.create_task(task_id, description, priority)
-        
+        auto_result = swarm.auto_assign_and_execute(task_id)
+
         return jsonify({
             "success": True,
             "task": {
                 "id": task.task_id,
                 "description": task.description,
                 "priority": task.priority,
-                "status": task.status
+                "status": task.status,
+                "assigned_to": task.assigned_to,
+                "result": task.result,
+                "auto_executed": auto_result.get("success", False)
             }
         }), 201
     except Exception as e:
@@ -269,7 +300,7 @@ def route_natural_language(query: str) -> tuple[str, str]:
     if any(word in query_lower for word in ['analyze', 'review', 'audit', 'check', 'scan', 'code']):
         return "analyzer_01", "Analyzer Agent"
     elif any(word in query_lower for word in ['optimize', 'improve', 'performance', 'speed', 'slow']):
-        return "optimizer_01", "Optimizer Agent"
+        return "coordinator_01", "Coordinator Agent"
     elif any(word in query_lower for word in ['execute', 'run', 'test', 'deploy', 'build']):
         return "executor_01", "Executor Agent"
     elif any(word in query_lower for word in ['health', 'status', 'monitor', 'check system', 'uptime', 'metric']):
@@ -293,13 +324,8 @@ def chat():
         
         # Create task from natural language
         task_id = f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        task = swarm.create_task(task_id, user_message, priority=1)
-        
-        # Assign to routed agent
-        swarm.assign_task(task_id, agent_id)
-        
-        # Execute immediately
-        result = swarm.execute_task(task_id)
+        swarm.create_task(task_id, user_message, priority=1)
+        result = swarm.auto_assign_and_execute(task_id, preferred_agent_id=agent_id)
         
         # Format response
         response = {
